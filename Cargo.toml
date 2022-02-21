@@ -1,0 +1,21 @@
+[package]
+name = "cec-dpms"
+authors = ['Mariusz Białończyk']
+version = "0.1.0"
+edition = "2021"
+license = 'GPL-2.0'
+description = 'Simple program to power on/off TV by simulating DPMS feature using HDMI CEC'
+documentation = 'https://github.com/manio/cec-dpms'
+readme = 'README.md'
+include = ['/README.md', '/LICENSE', '/Cargo.toml', '/Cargo.lock', '/src/*.rs']
+keywords = ['libcec', 'cec', 'hdmi', 'dpms']
+categories = ['command-line-utilities']
+homepage = 'https://github.com/manio/cec-dpms'
+repository = 'https://github.com/manio/cec-dpms'
+
+[dependencies]
+cec-rs = '4.0.0'
+simplelog = { version = "0.11.2", features = ["paris", "ansi_term"] }
+log = '0.4.11'
+signal-hook = "0.3.13"
+clap = { version = "3.0.13", features = ["derive"] }
