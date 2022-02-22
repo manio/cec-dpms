@@ -1,5 +1,8 @@
 # 🔘 cec-dpms
 
+[![Crates.io](https://img.shields.io/crates/v/cec-dpms.svg)](https://crates.io/crates/cec-dpms)
+[![Crates.io](https://img.shields.io/crates/l/cec-dpms.svg)](https://crates.io/crates/cec-dpms)
+
 ## Description
 This small linux tool is intended to emulate DPMS using [HDMI-CEC](https://en.wikipedia.org/wiki/Consumer_Electronics_Control) interface.
 It is using the [libcec](https://github.com/Pulse-Eight/libcec) library via [cec-rs](https://crates.io/crates/cec-rs).
