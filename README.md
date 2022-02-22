@@ -36,3 +36,10 @@ exec swayidle \
     timeout 600 'sudo pkill -USR2 cec-dpms' \
        resume 'sudo pkill -USR1 cec-dpms'
 ```
+
+## systemd integration
+A sample service file for systemd is here:<br>
+[systemd/cec-dpms.service](https://github.com/manio/cec-dpms/blob/master/systemd/cec-dpms.service)<br>
+You need to adjust it for your needs (eg. check the binary path).<br>
+After placing the unit file in correct location and reloading systemd, the unit can be started as usual:<br>
+`systemctl start cec-dpms.service`<br>

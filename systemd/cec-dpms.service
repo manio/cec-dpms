@@ -1,0 +1,11 @@
+[Unit]
+Description=cec-dpms
+Documentation=https://github.com/manio/cec-dpms
+After=local-fs.target
+
+[Service]
+Restart=always
+ExecStart=/usr/bin/cec-dpms
+
+[Install]
+WantedBy=multi-user.target
