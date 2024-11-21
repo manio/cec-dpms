@@ -5,6 +5,7 @@ use std::error::Error;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::{thread, time};
+use hostname;
 
 extern crate cec_rs;
 use cec_rs::{
@@ -67,6 +68,20 @@ fn on_log_message(log_message: CecLogMessage) {
     }
 }
 
+fn get_hostname() -> String {
+    let hostname_result = hostname::get();
+    match hostname_result {
+        Err(e) => {
+            debug!("get_hostname: Error getting hostname {}", e);
+            "dummy".to_string() // Just use a default value
+        },
+        Ok(v) => {
+            debug!("get_hostname: Hostname {:?}", v);
+            v.into_string().expect("Hostname should not contain non-Unicode chars")
+        },
+    }
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();
     logging_init(args.debug);
@@ -76,9 +91,11 @@ fn main() -> Result<(), Box<dyn Error>> {
         &device_path
     );
 
+    let hostname = get_hostname();
+    info!("Hostname: <b>{:?}</>", hostname);
     let cfg = CecConnectionCfgBuilder::default()
         .port(device_path)
-        .device_name("dummy".into())
+        .device_name(hostname.into())
         .command_received_callback(Box::new(on_command_received))
         .log_message_callback(Box::new(on_log_message))
         .device_types(CecDeviceTypeVec::new(CecDeviceType::PlaybackDevice))
