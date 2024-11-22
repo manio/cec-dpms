@@ -72,8 +72,10 @@ fn on_log_message(log_message: CecLogMessage) {
 ///
 /// This function gets the system hostname and returns it, or in the case of a
 /// retrieval error, the string "`dummy`".  Although intended for use with CEC
-/// `OSD Name`, it does not truncate the returned string. The string should be
-/// truncated to 14 bytes before use when setting a CEC `OSD Name`.
+/// `OSD Name`, it does not truncate the returned string. The string will be
+/// truncated to 14 bytes by `libcec-sys` (not including C-string trailing null)
+/// when setting a CEC `OSD Name` with `device_name()`.  It's not necessary to
+/// append a trailing null, as this is done by lower-level `libcec` C bindings.
 ///
 /// ## Example
 ///
