@@ -1,11 +1,11 @@
 use clap::Parser;
+use hostname;
 use signal_hook::{consts::SIGINT, consts::SIGTERM, consts::SIGUSR1, consts::SIGUSR2};
 use simplelog::*;
 use std::error::Error;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::{thread, time};
-use hostname;
 
 extern crate cec_rs;
 use cec_rs::{
@@ -107,11 +107,12 @@ fn get_osd_hostname() -> String {
         Err(e) => {
             debug!("get_osd_hostname: Error getting hostname {}", e);
             "dummy".to_string() // Just use a default value
-        },
+        }
         Ok(v) => {
             debug!("get_osd_hostname: Hostname {:?}", v);
-            v.into_string().expect("Hostname should not contain non-Unicode chars")
-        },
+            v.into_string()
+                .expect("Hostname should not contain non-Unicode chars")
+        }
     }
 }
 
