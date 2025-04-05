@@ -164,6 +164,7 @@ dependencies = [
  "cec-rs",
  "clap",
  "hostname",
+ "libcec-sys",
  "log",
  "signal-hook",
  "simplelog",

@@ -14,6 +14,7 @@ homepage = 'https://github.com/manio/cec-dpms'
 repository = 'https://github.com/manio/cec-dpms'
 
 [dependencies]
+libcec-sys = { version = "7.0.6", features = ["static"] }
 cec-rs = "11.0.2"
 simplelog = { version = "0.11.2", features = ["paris", "ansi_term"] }
 log = '0.4.11'
