@@ -3,6 +3,7 @@ use hostname;
 use signal_hook::{consts::SIGINT, consts::SIGTERM, consts::SIGUSR1, consts::SIGUSR2};
 use simplelog::*;
 use std::error::Error;
+use std::ffi::CString;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::{thread, time};
@@ -128,7 +129,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let hostname = get_osd_hostname();
     info!("Hostname: <b>{:?}</>", hostname);
     let cfg = CecConnectionCfgBuilder::default()
-        .port(device_path)
+        .port(CString::new(device_path)?)
         .device_name(hostname.into())
         .command_received_callback(Box::new(on_command_received))
         .log_message_callback(Box::new(on_log_message))
