@@ -151,9 +151,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         if usr1.load(Ordering::Relaxed) {
             info!("<b><green>USR1</>: powering <b>ON</>");
             usr1.store(false, Ordering::Relaxed);
-            let _ = connection.send_power_on_devices(CecLogicalAddress::Tv);
-            //the following call is working the same on my samsung, idk what is more proper:
-            //connection.set_active_source(CecDeviceType::PlaybackDevice);
+            let _ = connection.set_active_source(CecDeviceType::PlaybackDevice);
         }
         if usr2.load(Ordering::Relaxed) {
             info!("<b><green>USR2</>: powering <b>OFF</>");
