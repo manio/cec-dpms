@@ -1,0 +1,8 @@
+# ModemManager and mtp probe should ignore /dev/ttyACM0
+# Allow user control for cec-dpms to power on/off HDMI displays
+ACTION=="add", SUBSYSTEMS=="usb", ATTRS{product}=="CEC Adapter", ENV{ID_MM_DEVICE_IGNORE}="1", ENV{MTP_NO_PROBE}="1", ENV{CEC_ADAPTER}="true"
+ACTION=="add", SUBSYSTEMS=="usb", ATTRS{idVendor}=="2548", ATTRS{idProduct}=="1002", ENV{ID_MM_DEVICE_IGNORE}="1", ENV{MTP_NO_PROBE}="1", ENV{CEC_ADAPTER}="true"
+SUBSYSTEM=="tty", KERNEL=="ttyACM[0-9]*", ATTRS{idVendor}=="2548", ATTRS{idProduct}=="1002", ENV{CEC_ADAPTER}="true"
+SUBSYSTEM=="tty", KERNEL=="ttyACM[0-9]*", ATTRS{idVendor}=="2548", ATTRS{idProduct}=="1001", ENV{CEC_ADAPTER}="true"
+KERNEL=="ttyACM[0-9]*", SUBSYSTEM=="tty", ENV{CEC_ADAPTER}=="true", TAG+="systemd", TAG+="uaccess", TAG+="udev-acl", PROGRAM="/usr/bin/systemd-escape -p --template=cec-dpms@.service $env{DEVNAME}", ENV{SYSTEMD_WANTS}+="%c"
+
