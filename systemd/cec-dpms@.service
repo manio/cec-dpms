@@ -2,6 +2,7 @@
 Description=cec-dpms for CEC adapter %f
 Documentation=https://github.com/manio/cec-dpms
 After=local-fs.target
+BindsTo=%i.device
 
 [Service]
 Restart=always
