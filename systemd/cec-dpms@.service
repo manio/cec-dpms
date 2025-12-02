@@ -1,0 +1,12 @@
+[Unit]
+Description=cec-dpms for CEC adapter %f
+Documentation=https://github.com/manio/cec-dpms
+After=local-fs.target
+BindsTo=%i.device
+
+[Service]
+Restart=always
+ExecStart=/usr/bin/cec-dpms --input %f
+
+[Install]
+WantedBy=multi-user.target
