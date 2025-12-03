@@ -16,6 +16,10 @@ use cec_rs::{
     CecDeviceType, CecDeviceTypeVec, CecLogMessage, CecLogicalAddress, CecOpcode,
 };
 
+use std::sync::atomic::AtomicUsize;
+
+static GLOBAL_THREAD_COUNT: AtomicUsize = AtomicUsize::new(0);
+
 #[derive(Parser, Debug)]
 #[clap(version, about, long_about = None)]
 struct Args {
@@ -56,6 +60,12 @@ fn on_command_received(command: CecCommand) {
         "onCommandReceived: opcode: {:?}, initiator: {:?}",
         command.opcode, command.initiator
     );
+    // Note that Relaxed ordering doesn't synchronize anything
+    // except the global thread counter itself.
+    let old_thread_count = GLOBAL_THREAD_COUNT.fetch_add(1, Ordering::Relaxed);
+    // Note that this number may not be true at the moment of printing
+    // because some other thread may have changed static value already.
+    debug!("live threads: {}", old_thread_count + 1);
 
     CONNECTION.with(|connection| {
         debug!(
@@ -129,6 +139,7 @@ fn on_command_received(command: CecCommand) {
                 }
             }
     }
+    GLOBAL_THREAD_COUNT.fetch_sub(1, Ordering::Relaxed);
 })
 }
 
@@ -246,6 +257,8 @@ fn initialize_connection() -> Option<()> {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
+    let old_thread_count = GLOBAL_THREAD_COUNT.fetch_add(1, Ordering::Relaxed);
+    debug!("live threads at start of main(): {}", old_thread_count + 1);
     let args = Args::parse();
     logging_init(args.debug);
     let device_path = args.input.unwrap().into_os_string().into_string().unwrap();
@@ -303,10 +316,14 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
     })?;
 
+    let last_thread_count = &GLOBAL_THREAD_COUNT.load(Ordering::Relaxed);
+    debug!("live threads at start of main(): {}", last_thread_count);
     info!("Waiting for signals...");
     loop {
         if usr1.load(Ordering::Relaxed) {
             info!("<b><green>USR1</>: powering <b>ON</>");
+            let last_thread_count = &GLOBAL_THREAD_COUNT.load(Ordering::Relaxed);
+            debug!("live threads at USR1 handler start: {}", last_thread_count);
             usr1.store(false, Ordering::Relaxed);
             // This apparently set active source to Tv??
             // let _ = connection.send_power_on_devices(CecLogicalAddress::Tv);
