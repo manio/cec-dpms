@@ -12,8 +12,8 @@ use std::{thread, time};
 use arrayvec::ArrayVec;
 extern crate cec_rs;
 use cec_rs::{
-    CecCommand, CecConnection, CecConnectionCfg, CecConnectionCfgBuilder, CecDatapacket,
-    CecDeviceType, CecDeviceTypeVec, CecLogMessage, CecLogicalAddress, CecOpcode,
+    CecCommand, CecConnection, CecConnectionCfgBuilder, CecDatapacket, CecDeviceType,
+    CecDeviceTypeVec, CecLogMessage, CecLogicalAddress, CecOpcode,
 };
 
 use std::sync::atomic::AtomicUsize;
@@ -67,13 +67,14 @@ fn on_command_received(command: CecCommand) {
     // because some other thread may have changed static value already.
     debug!("live threads: {}", old_thread_count + 1);
 
-    CONNECTION.with(|connection| {
+    THREAD_CONNECTION.with(|connection| {
         debug!(
             "onCommandReceived: opcode type: {:?}",
             std::any::type_name_of_val(&command.opcode)
         );
         debug!("onCommandReceived: try to borrow the connection: {:?}", std::any::type_name_of_val(&connection));
-        if let Some(conn) = connection.borrow().as_ref() {
+        // Use the static CONNECTION variable instead of the thread-local one
+        if let Some(Some(conn)) = CONNECTION.get() {
             debug!(
                 "onCommandReceived: Connection successfully borrowed from thread-local storage: {:?}",
                 std::any::type_name_of_val(&conn)
@@ -204,56 +205,9 @@ fn get_osd_hostname() -> String {
     }
 }
 
+static CONNECTION: std::sync::OnceLock<Option<Arc<CecConnection>>> = std::sync::OnceLock::new();
 thread_local! {
-    static CONNECTION: RefCell<Option<CecConnection>> = RefCell::new(None);
-    static CONNECTION_CONFIG: RefCell<Option<CecConnectionCfg>> = RefCell::new(None);
-}
-
-/// Initializes a `CecConnection` from `CONNECTION_CONFIG` and stores it in
-/// thread-local storage as `CONNECTION`
-///
-/// This function gets the `CecConnectionCfg` from thread-local storage
-/// variable: `CONNECTION_CONFIG`.
-///
-/// ## Example
-///
-/// ```rust
-/// use std::io;
-/// fn main() -> io::Result<()> {
-///   match initialize_connection() {
-///     Some(()) => { Ok(()) }
-///     None => { Err("Could not open CEC connection") }
-///   }
-/// }
-/// ```
-///
-/// ## Errors
-///
-/// None - If an error was encountered opening the CEC connection, then `None`
-///        is returned.
-fn initialize_connection() -> Option<()> {
-    CONNECTION.with(|conn| {
-        // Get mutable access to the thread_local RefCell contents and set it
-        CONNECTION_CONFIG.with(|opt_config| {
-            if let Some(cfg) = opt_config.borrow_mut().take() {
-                match cfg.open() {
-                    Ok(c) => {
-                        info!("Successfully opened CEC connection");
-                        *conn.borrow_mut() = Some(c);
-                        Some(())
-                    }
-                    Err(e) => {
-                        error!("Failed to initialize CEC connection: {:?}", e);
-                        *conn.borrow_mut() = None;
-                        None
-                    }
-                }
-            } else {
-                error!("Failed to get mutable reference to thread-local CecConnectionCfg");
-                None
-            }
-        })
-    })
+    static THREAD_CONNECTION: RefCell<Option<Arc<CecConnection>>> = RefCell::new(None);
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -277,10 +231,6 @@ fn main() -> Result<(), Box<dyn Error>> {
         .device_types(CecDeviceTypeVec::new(CecDeviceType::PlaybackDevice))
         .build()
         .unwrap();
-    CONNECTION_CONFIG.with(|config| {
-        // store it in thread-local RefCell's value
-        *config.borrow_mut() = Some(cfg);
-    });
     // Setup signal handling flags
     let usr1 = Arc::new(AtomicBool::new(false));
     let usr2 = Arc::new(AtomicBool::new(false));
@@ -290,31 +240,41 @@ fn main() -> Result<(), Box<dyn Error>> {
     signal_hook::flag::register(SIGTERM, Arc::clone(&terminate))?;
     signal_hook::flag::register(SIGINT, Arc::clone(&terminate))?;
 
-    // Initialize CecConnection and store it in thread-local CONNECTION
-    initialize_connection();
+    // Open CecConnection directly
+    let connection = match cfg.open() {
+        Ok(conn) => {
+            info!("Successfully opened CEC connection");
+            Some(Arc::new(conn))
+        }
+        Err(e) => {
+            error!("Failed to open CEC connection: {:?}", e);
+            None
+        }
+    };
 
-    // Sharing same CEC connection with callback function threads, so only borrow it when needed
-    CONNECTION.with(|conn| {
-        // Get mutable access to the thread_local RefCell contents and set it
-        // *conn.borrow_mut() = cfg.open().ok();
-        // connection = cfg.open().unwrap();
-        if let Some(connection) = conn.borrow().as_ref() {
+    // Store in static for access from callbacks and main thread
+    let _ = CONNECTION.set(connection.clone());
+
+    // Also store in thread-local for main thread use
+    THREAD_CONNECTION.with(|tconn| {
+        *tconn.borrow_mut() = connection.clone();
+    });
+
+    // Verify connection is working
+    let _res = connection
+        .map(|conn| {
             info!(
                 "Am I active source? <b>{:?}</>",
-                connection.is_active_source(CecLogicalAddress::Playbackdevice1)
+                conn.is_active_source(CecLogicalAddress::Playbackdevice1)
             );
-            info!("Active source: <b>{:?}</>", connection.get_active_source());
+            info!("Active source: <b>{:?}</>", conn.get_active_source());
             Ok(()) as Result<(), Box<dyn Error>>
-        } else {
+        })
+        .unwrap_or_else(|| {
             let err_msg = "Failed to open CEC connection";
             error!("{}", err_msg);
             Err(err_msg.to_string().into())
-            // Err(Box::new(std::io::Error::new(
-            //     std::io::ErrorKind::Other,
-            //     err_msg,
-            // )))
-        }
-    })?;
+        });
 
     let last_thread_count = &GLOBAL_THREAD_COUNT.load(Ordering::Relaxed);
     debug!("live threads at start of main(): {}", last_thread_count);
@@ -327,7 +287,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             usr1.store(false, Ordering::Relaxed);
             // This apparently set active source to Tv??
             // let _ = connection.send_power_on_devices(CecLogicalAddress::Tv);
-            CONNECTION.with(|conn| {
+            let _res = THREAD_CONNECTION.with(|conn| {
                 if let Some(connection) = conn.borrow().as_ref() {
                     let power_on_devices_result =
                         connection.send_power_on_devices(CecLogicalAddress::Tv);
@@ -363,12 +323,12 @@ fn main() -> Result<(), Box<dyn Error>> {
                     error!("{}", err_msg);
                     Err(err_msg.to_string().into())
                 }
-            })?;
+            });
         }
         if usr2.load(Ordering::Relaxed) {
             info!("<b><green>USR2</>: powering <b>OFF</>");
             usr2.store(false, Ordering::Relaxed);
-            CONNECTION.with(|conn| {
+            THREAD_CONNECTION.with(|conn| {
                 // Get mutable access to the thread_local RefCell contents and set it
                 // *conn.borrow_mut() = cfg.open().ok();
                 if let Some(connection) = conn.borrow().as_ref() {
