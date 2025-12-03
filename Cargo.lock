@@ -161,6 +161,7 @@ dependencies = [
 name = "cec-dpms"
 version = "0.1.1"
 dependencies = [
+ "arrayvec",
  "cec-rs",
  "clap",
  "hostname",
