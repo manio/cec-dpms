@@ -20,3 +20,4 @@ log = '0.4.11'
 signal-hook = "0.3.17"
 clap = { version = "3.0.13", features = ["derive"] }
 hostname = '^0.4'
+arrayvec = '0.7.1'
