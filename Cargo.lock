@@ -161,6 +161,7 @@ dependencies = [
 name = "cec-dpms"
 version = "0.1.1"
 dependencies = [
+ "arrayvec",
  "cec-rs",
  "clap",
  "hostname",
@@ -974,6 +975,12 @@ name = "paris"
 version = "1.5.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c69d19a208bba8b94bd27d4b7a06ad153cddc6b88cb2149a668e23ce7bdb67d5"
+
+[[package]]
+name = "pkg-config"
+version = "0.3.27"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "26072860ba924cbfa98ea39c8c19b4dd6a4a25423dbdf219c1eca91aa0cf6964"
 
 [[package]]
 name = "password-hash"
