@@ -5,13 +5,20 @@
 
 ## Description
 This small linux tool is intended to emulate DPMS using [HDMI-CEC](https://en.wikipedia.org/wiki/Consumer_Electronics_Control) interface.
-It is using the [libcec](https://github.com/Pulse-Eight/libcec) library via [cec-rs](https://crates.io/crates/cec-rs).
+It is using the [libcec](https://github.com/Pulse-Eight/libcec) library via its official Rust bindings ([libcec crate](https://crates.io/crates/libcec)).
 This way it allows to emulate DPMS but for the TV connected to the CEC bus, as the result the TV behaves similar to a regular monitor.
 The user however has to run own scripts for controlling it.
 
+## Requirements
+The system `libcec` library (version 8.x) and `pkg-config` are required to build.
+The major version of the installed library must match the one expected by the `libcec` crate.
+
+- Debian/Ubuntu: `apt install libcec8-dev pkg-config`
+- Arch Linux: `pacman -S libcec`
+
 ## Usage
 ```
-cec-dpms 0.1.0
+cec-dpms 0.2.0
 Simple program to power on/off TV by simulating DPMS feature using HDMI CEC
 
 USAGE:
@@ -20,7 +27,7 @@ USAGE:
 OPTIONS:
     -d, --debug            Enable debug info
     -h, --help             Print help information
-    -i, --input <INPUT>    input device path/name of CEC device
+    -i, --input <INPUT>    input device path/name of CEC device (autodetected if not given)
     -V, --version          Print version information
 ```
 
