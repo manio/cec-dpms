@@ -1,18 +1,17 @@
 use clap::Parser;
-use hostname;
 use signal_hook::{consts::SIGINT, consts::SIGTERM, consts::SIGUSR1, consts::SIGUSR2};
 use simplelog::*;
 use std::error::Error;
-use std::ffi::CString;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 use std::{thread, time};
 
-extern crate cec_rs;
-use cec_rs::{
-    CecCommand, CecConnectionCfgBuilder, CecDeviceType, CecDeviceTypeVec, CecLogMessage,
-    CecLogicalAddress,
-};
+use libcec::enums::{DeviceType, LogLevel, LogicalAddress};
+use libcec::{CecCallbacks, Command, ConnectionBuilder, LogMessage};
+
+/// Maximum length of the CEC `OSD Name` accepted by libcec (without trailing null).
+const OSD_NAME_MAX: usize = 14;
 
 #[derive(Parser, Debug)]
 #[clap(version, about, long_about = None)]
@@ -21,7 +20,7 @@ struct Args {
     #[clap(short, long)]
     debug: bool,
 
-    /// input device path/name of CEC device
+    /// input device path/name of CEC device (autodetected when not given)
     #[clap(short, long, parse(from_os_str))]
     input: Option<std::path::PathBuf>,
 }
@@ -49,94 +48,68 @@ fn logging_init(debug: bool) {
     CombinedLogger::init(loggers).expect("Cannot initialize logging subsystem");
 }
 
-fn on_command_received(command: CecCommand) {
-    debug!(
-        "onCommandReceived: opcode: {:?}, initiator: {:?}",
-        command.opcode, command.initiator
-    );
-}
+/// Callbacks invoked by libcec from its own worker thread (must not block).
+struct Handler;
 
-fn on_log_message(log_message: CecLogMessage) {
-    let log_prefix = "<black>libcec:</>";
-    match log_message.level {
-        cec_rs::CecLogLevel::All => trace!("{} {}", log_prefix, log_message.message),
-        cec_rs::CecLogLevel::Debug | cec_rs::CecLogLevel::Traffic => {
-            debug!("{} {}", log_prefix, log_message.message)
+impl CecCallbacks for Handler {
+    fn command_received(&self, command: &Command) {
+        debug!(
+            "onCommandReceived: opcode: {:?}, initiator: {:?}",
+            command.opcode, command.initiator
+        );
+    }
+
+    fn log_message(&self, log_message: &LogMessage) {
+        let log_prefix = "<black>libcec:</>";
+        match log_message.level {
+            LogLevel::All | LogLevel::Other(_) => {
+                trace!("{} {}", log_prefix, log_message.message)
+            }
+            LogLevel::Debug | LogLevel::Traffic => {
+                debug!("{} {}", log_prefix, log_message.message)
+            }
+            LogLevel::Notice => info!("{} {}", log_prefix, log_message.message),
+            LogLevel::Warning => warn!("{} {}", log_prefix, log_message.message),
+            LogLevel::Error => error!("{} {}", log_prefix, log_message.message),
         }
-        cec_rs::CecLogLevel::Notice => info!("{} {}", log_prefix, log_message.message),
-        cec_rs::CecLogLevel::Warning => warn!("{} {}", log_prefix, log_message.message),
-        cec_rs::CecLogLevel::Error => error!("{} {}", log_prefix, log_message.message),
     }
 }
 
 /// Returns the hostname of the current system, for use with CEC `OSD Name`.
 ///
-/// This function gets the system hostname and returns it, or in the case of a
-/// retrieval error, the string "`dummy`".  Although intended for use with CEC
-/// `OSD Name`, it does not truncate the returned string. The string will be
-/// truncated to 14 bytes by `libcec-sys` (not including C-string trailing null)
-/// when setting a CEC `OSD Name` with `device_name()`.  It's not necessary to
-/// append a trailing null, as this is done by lower-level `libcec` C bindings.
-///
-/// ## Example
-///
-/// ```rust
-/// # use std::io;
-/// # fn main() -> io::Result<()> {
-/// let name = get_osd_hostname();
-/// # Ok(())
-/// # }
-/// ```
-///
-/// ## Errors
-///
-/// If the `hostname::get()` function encounters any form of error, the default
-/// string, "`dummy`", will be returned; in practice this is rare to happen.
-///
-/// If the returned hostname contains non-Unicode characters, this is a fatal
-/// error, and the program panics.
-/// This should **_not_** be possible according to Internet Standards:
-/// [RFC 952][1], [RFC 921][2], [RFC 1123][3], and [RFC 3492][4]
-///
-/// [1]: https://www.rfc-editor.org/rfc/rfc952
-/// [2]: https://www.rfc-editor.org/rfc/rfc921
-/// [3]: https://www.rfc-editor.org/rfc/rfc1123
-/// [4]: https://www.rfc-editor.org/info/rfc3492
+/// On a retrieval error the string "`dummy`" is returned. The result is
+/// truncated to [`OSD_NAME_MAX`] characters, because libcec rejects longer
+/// names instead of silently truncating them.
 fn get_osd_hostname() -> String {
-    let hostname_result = hostname::get();
-    match hostname_result {
+    let name = match hostname::get() {
         Err(e) => {
             debug!("get_osd_hostname: Error getting hostname {}", e);
             "dummy".to_string() // Just use a default value
         }
         Ok(v) => {
             debug!("get_osd_hostname: Hostname {:?}", v);
-            v.into_string()
-                .expect("Hostname should not contain non-Unicode chars")
+            v.to_string_lossy().into_owned()
         }
-    }
+    };
+    name.chars().take(OSD_NAME_MAX).collect()
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();
     logging_init(args.debug);
-    let device_path = args.input.unwrap().into_os_string().into_string().unwrap();
+    let device_path: Option<String> = args.input.map(|p| p.to_string_lossy().into_owned());
     info!(
         "🔘 <b>cec-dpms</> started, about to open CEC connection to: <u>{}</>",
-        &device_path
+        device_path.as_deref().unwrap_or("<autodetect>")
     );
 
     let hostname = get_osd_hostname();
     info!("Hostname: <b>{:?}</>", hostname);
-    let cfg = CecConnectionCfgBuilder::default()
-        .port(CString::new(device_path)?)
-        .device_name(hostname.into())
-        .command_received_callback(Box::new(on_command_received))
-        .log_message_callback(Box::new(on_log_message))
-        .device_types(CecDeviceTypeVec::new(CecDeviceType::PlaybackDevice))
-        .build()
-        .unwrap();
-    let connection = cfg.open().unwrap();
+    let connection = ConnectionBuilder::new(hostname)
+        .device_type(DeviceType::PlaybackDevice)
+        .callbacks(Arc::new(Handler))
+        .open(device_path.as_deref(), Duration::from_secs(10))?;
+
     let usr1 = Arc::new(AtomicBool::new(false));
     let usr2 = Arc::new(AtomicBool::new(false));
     let terminate = Arc::new(AtomicBool::new(false));
@@ -145,21 +118,23 @@ fn main() -> Result<(), Box<dyn Error>> {
     signal_hook::flag::register(SIGTERM, Arc::clone(&terminate))?;
     signal_hook::flag::register(SIGINT, Arc::clone(&terminate))?;
 
-    info!("Active source: <b>{:?}</>", connection.get_active_source());
+    info!("Active source: <b>{:?}</>", connection.active_source());
     info!("Waiting for signals...");
     loop {
-        if usr1.load(Ordering::Relaxed) {
+        if usr1.swap(false, Ordering::Relaxed) {
             info!("<b><green>USR1</>: powering <b>ON</>");
-            usr1.store(false, Ordering::Relaxed);
-            let _ = connection.set_active_source(CecDeviceType::PlaybackDevice);
+            if let Err(e) = connection.set_active_source(DeviceType::PlaybackDevice) {
+                warn!("set_active_source failed: {}", e);
+            }
         }
-        if usr2.load(Ordering::Relaxed) {
+        if usr2.swap(false, Ordering::Relaxed) {
             info!("<b><green>USR2</>: powering <b>OFF</>");
-            usr2.store(false, Ordering::Relaxed);
-            if connection.get_active_source() == CecLogicalAddress::Playbackdevice1 {
-                let _ = connection.send_standby_devices(CecLogicalAddress::Tv);
+            if connection.is_libcec_active_source() {
+                if let Err(e) = connection.standby(LogicalAddress::Tv) {
+                    warn!("standby failed: {}", e);
+                }
             } else {
-                info!("<i>reguest ignored</>: we are not an active source");
+                info!("<i>request ignored</>: we are not an active source");
             }
         }
         if terminate.load(Ordering::Relaxed) {
